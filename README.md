@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🩺 AI Pediatric Pneumonia Triage System
+# 🫁 Clasificación de Neumonía Pediátrica mediante Deep Learning
 **Clasificación automática de radiografías mediante Deep Learning (ResNet18) y XAI.**
 
 </div>
