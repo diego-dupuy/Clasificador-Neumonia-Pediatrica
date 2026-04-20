@@ -7,8 +7,10 @@
 
 ---
 
-## 📌 Resumen Ejecutivo
-Este repositorio contiene el desarrollo de un sistema de triaje clínico diseñado para detectar neumonía en **radiografías de tórax pediátricas (pacientes de 1 a 5 años)**. El objetivo de la herramienta es asistir a los médicos de urgencias en la priorización de pacientes, minimizando el riesgo de pasar por alto casos positivos (Falsos Negativos). 
+## 📌 Resumen del Proyecto
+Este proyecto consiste en el entrenamiento de un modelo de red neuronal convolucional para la clasificación binaria de radiografías de tórax, distinguiendo entre pulmones sanos y pulmones con neumonía en pacientes pediátricos. 
+
+Como parte de mi formación autónoma en inteligencia artificial aplicada a la ingeniería biomédica, el objetivo ha sido entender el flujo de trabajo completo: desde el preprocesamiento de los datos hasta la interpretación de las decisiones del modelo mediante mapas de activación (Grad-CAM).
 
 Para garantizar la transparencia algorítmica, el modelo no opera como una "caja negra", sino que integra **Grad-CAM** (Gradient-weighted Class Activation Mapping) para generar mapas de calor que justifican visualmente cada diagnóstico clínico.
 
