@@ -52,3 +52,7 @@ Para auditar los 12 Falsos Negativos, se implementó el algoritmo Grad-CAM. El a
 * Desarrollo de un pipeline de inferencia ("1-click script") para simular un entorno de producción hospitalario.
 
 <br>
+> **📚 Bibliografía Principal:**
+> * He, K., Zhang, X., Ren, S., & Sun, J. (2016). Deep residual learning for image recognition. En *Proceedings of the IEEE conference on computer vision and pattern recognition* (pp. 770-778). https://doi.org/10.1109/CVPR.2016.90
+> * Mooney, P. (2018). *Chest X-Ray Images (Pneumonia)*. Kaggle. https://www.kaggle.com/paultimothymooney/chest-xray-pneumonia
+> * Selvaraju, R. R., Cogswell, M., Das, A., Vedantam, R., Parikh, D., & Batra, D. (2017). Grad-cam: Visual explanations from deep networks via gradient-based localization. En *Proceedings of the IEEE international conference on computer vision* (pp. 618-626). https://doi.org/10.1109/ICCV.2017.74
