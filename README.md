@@ -46,4 +46,7 @@ Para auditar los 12 Falsos Negativos, se implementó el algoritmo Grad-CAM. El a
 ---
 
 ## 🚀 Próximos Pasos (V2)
-* Implementación de *Data Augmentation* avanzado (Random
+* Implementación de *Data Augmentation* avanzado (Random Crops centrados) para mitigar el sesgo espacial detectado por Grad-CAM.
+* Desarrollo de un pipeline de inferencia ("1-click script") para simular un entorno de producción hospitalario.
+
+<br>
