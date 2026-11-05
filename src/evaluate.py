@@ -1,8 +1,8 @@
-"""Evaluate trained models on the test set and compare experiments.
+"""Evaluate trained models on the test set and compare the experiments.
 
 Usage:
-    python -m src.evaluate --experiment weighted_aug
-    python -m src.evaluate --compare
+    python -m src.evaluate --experiment weighted_aug   # one experiment
+    python -m src.evaluate --compare                   # table with all experiments
 """
 
 import argparse
@@ -10,7 +10,7 @@ import json
 
 import matplotlib
 
-matplotlib.use("Agg")
+matplotlib.use("Agg")  # draw figures to files (no screen needed)
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -23,35 +23,44 @@ from .model import build_model  # noqa: E402
 
 
 def load_model(name, device):
-    model = build_model(pretrained=False)
+    """Rebuild the network and load the weights saved by train.py."""
+    model = build_model(pretrained=False)  # same architecture, weights come from the file
     model.load_state_dict(torch.load(RESULTS_DIR / name / "model.pth", map_location=device))
-    return model.to(device).eval()
+    return model.to(device).eval()  # eval mode: no training behaviour
 
 
-@torch.no_grad()
+@torch.no_grad()  # nothing is learnt here, so gradients are not computed
 def predict(model, loader, device):
+    """Return the real labels and the predicted labels of every image in the loader."""
     labels, preds = [], []
     for images, y in loader:
         labels.extend(y.tolist())
-        preds.extend(model(images.to(device)).argmax(1).cpu().tolist())
+        preds.extend(model(images.to(device)).argmax(1).cpu().tolist())  # highest score wins
     return np.array(labels), np.array(preds)
 
 
 def clinical_metrics(labels, preds):
-    """Metrics from the confusion matrix (positive class = Pneumonia)."""
+    """Metrics from the confusion matrix (positive class = Pneumonia).
+
+    TP: pneumonia detected          FN: pneumonia missed (most dangerous error)
+    TN: healthy correctly cleared   FP: healthy flagged as pneumonia (false alarm)
+    """
     tn, fp, fn, tp = confusion_matrix(labels, preds, labels=[0, 1]).ravel()
-    sensitivity = tp / (tp + fn)  # sick children detected
-    specificity = tn / (tn + fp)  # healthy children correctly cleared
-    precision = tp / (tp + fp)  # of the "pneumonia" alarms, how many are real
+    sensitivity = tp / (tp + fn)  # share of sick children that are detected
+    specificity = tn / (tn + fp)  # share of healthy children correctly cleared
+    precision = tp / (tp + fp)  # share of "pneumonia" predictions that are correct
     return {
         "sensitivity": sensitivity, "specificity": specificity, "precision": precision,
+        # Accuracy can be misleading with imbalanced classes: always answering
+        # "pneumonia" would already give 62 % on this test set.
         "accuracy": (tp + tn) / (tp + tn + fp + fn),
-        "f1": 2 * precision * sensitivity / (precision + sensitivity),
+        "f1": 2 * precision * sensitivity / (precision + sensitivity),  # balance of both
         "TP": int(tp), "TN": int(tn), "FP": int(fp), "FN": int(fn),
     }
 
 
 def plot_confusion(labels, preds, title, path):
+    """Save the 2 x 2 confusion matrix (rows = real class, columns = prediction)."""
     cm = confusion_matrix(labels, preds, labels=[0, 1])
     fig, ax = plt.subplots(figsize=(4.5, 4))
     ax.imshow(cm, cmap="Blues")
@@ -69,6 +78,11 @@ def plot_confusion(labels, preds, title, path):
 
 
 def plot_history(name, path):
+    """Save the training and validation loss per epoch.
+
+    Both curves going down = the model is learning. Training going down while
+    validation goes up = overfitting (this is where early stopping acts).
+    """
     history = json.loads((RESULTS_DIR / name / "history.json").read_text())
     epochs = [h["epoch"] for h in history]
     fig, ax = plt.subplots(figsize=(5, 3.5))
@@ -83,6 +97,7 @@ def plot_history(name, path):
 
 
 def evaluate(name, device):
+    """Evaluate one experiment on the test set and save metrics and figures."""
     loaders, _ = make_loaders(EXPERIMENTS[name])
     labels, preds = predict(load_model(name, device), loaders["test"], device)
     metrics = clinical_metrics(labels, preds)
@@ -95,12 +110,13 @@ def evaluate(name, device):
 
 
 def compare():
+    """Put the test metrics of all evaluated experiments in one table."""
     rows = {}
     for name in EXPERIMENTS:
         path = RESULTS_DIR / name / "metrics.json"
         if path.exists():
             rows[name] = json.loads(path.read_text())
-    table = pd.DataFrame(rows).T
+    table = pd.DataFrame(rows).T  # one row per experiment
     table.to_csv(RESULTS_DIR / "comparison.csv")
     print(table.round(3).to_string())
     return table

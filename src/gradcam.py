@@ -1,4 +1,9 @@
-"""Grad-CAM on ALL false negatives + a simple number for "where does the model look".
+"""Grad-CAM on ALL false negatives + a number that summarises where the model looks.
+
+Grad-CAM in short: the last convolutional layer produces 512 feature maps (7 x 7).
+The gradient of the "pneumonia" score with respect to each map tells how much that
+map pushes the decision towards pneumonia. A weighted sum of the maps gives a heat
+map that is resized to 224 x 224 and drawn over the X-ray (red = most influential).
 
 Usage:  python -m src.gradcam --experiment weighted_aug
 """
@@ -20,29 +25,37 @@ from .config import EXPERIMENTS, IMAGENET_MEAN, IMAGENET_STD, RESULTS_DIR  # noq
 from .dataset import make_loaders  # noqa: E402
 from .evaluate import load_model  # noqa: E402
 
-MARGIN = 0.15  # border band (15 % of each side) considered "outside the lungs"
+MARGIN = 0.15  # band of 15 % on each side treated as "border" (outside the lungs)
 
 
 def central_fraction(cam):
-    """Share of the heat map that falls in the central region of the image
-    (1.0 = all attention in the centre, low = attention on borders/corners)."""
+    """Share of the heat map inside the central region of the image.
+
+    The central region (15 % margin removed on each side) covers 0.7 x 0.7 = 49 %
+    of the image, so evenly spread attention gives ~0.49. Higher values = attention
+    on the centre (lungs); lower values = attention on borders and corners.
+    """
     h, w = cam.shape
     top, left = int(h * MARGIN), int(w * MARGIN)
     centre = cam[top:h - top, left:w - left].sum()
-    return float(centre / (cam.sum() + 1e-8))
+    return float(centre / (cam.sum() + 1e-8))  # 1e-8 avoids dividing by zero
 
 
 def to_rgb(tensor):
-    """Undo the ImageNet normalisation to display the X-ray."""
-    img = tensor.numpy().transpose(1, 2, 0)
+    """Undo the ImageNet normalisation so the X-ray can be displayed."""
+    img = tensor.numpy().transpose(1, 2, 0)  # [3, H, W] -> [H, W, 3]
     return np.clip(np.array(IMAGENET_STD) * img + np.array(IMAGENET_MEAN), 0, 1)
 
 
 def run(name, device, max_images=12):
+    """Compute Grad-CAM for every pneumonia X-ray of the test set, save a summary
+    and a figure with the false negatives (sick children predicted as healthy)."""
     model = load_model(name, device)
-    for param in model.parameters():  # Grad-CAM needs gradients through the backbone
+    # Grad-CAM needs gradients to flow through the backbone, so the layers frozen
+    # during training are unfrozen here (nothing is trained, gradients are only read)
+    for param in model.parameters():
         param.requires_grad = True
-    cam = GradCAM(model=model, target_layers=[model.layer4[-1]])
+    cam = GradCAM(model=model, target_layers=[model.layer4[-1]])  # last convolutional block
     loaders, _ = make_loaders(EXPERIMENTS[name])
 
     false_negatives, fractions_fn, fractions_all = [], [], []
@@ -50,13 +63,14 @@ def run(name, device, max_images=12):
         images = images.to(device)
         with torch.no_grad():
             preds = model(images).argmax(1).cpu()
-        sick = labels == 1
+        sick = labels == 1  # only X-rays that really have pneumonia
         if not sick.any():
             continue
+        # Heat map of the "pneumonia" class (target 1) for each sick X-ray of the batch
         maps = cam(input_tensor=images[sick], targets=[ClassifierOutputTarget(1)] * int(sick.sum()))
         for img, pred, heat in zip(images[sick].cpu(), preds[sick], maps):
             fractions_all.append(central_fraction(heat))
-            if pred == 0:  # sick child predicted as healthy
+            if pred == 0:  # false negative: sick child predicted as healthy
                 fractions_fn.append(central_fraction(heat))
                 false_negatives.append((img, heat))
 
@@ -69,6 +83,7 @@ def run(name, device, max_images=12):
     (out / "gradcam_summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
 
+    # Grid with up to 12 false negatives and their central-attention value
     shown = false_negatives[:max_images]
     if shown:
         cols = 4
