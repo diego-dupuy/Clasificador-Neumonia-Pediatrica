@@ -58,9 +58,28 @@ src/
 ├── model.py       # ResNet18 con transfer learning
 ├── train.py       # bucle de entrenamiento con early stopping
 ├── evaluate.py    # métricas en test, matriz de confusión, comparación de experimentos
-└── gradcam.py     # Grad-CAM de los falsos negativos y medida de atención central
+├── gradcam.py     # Grad-CAM de los falsos negativos y medida de atención central
+├── inference.py   # análisis de una radiografía: predicción, Grad-CAM y controles de calidad
+├── dicom_utils.py # lectura de DICOM con anonimización previa
+└── report.py      # informe PDF a partir de una plantilla fija
+app.py             # aplicación web de demostración (Gradio)
 notebooks/
 └── train_colab.ipynb   # ejecuta todo en Google Colab (GPU)
+```
+
+## Aplicación de demostración
+`app.py` es una interfaz web para usar el modelo entrenado de principio a fin:
+1. **Entrada:** se sube una radiografía en PNG, JPG o **DICOM**. En DICOM se eliminan antes de nada los datos
+   identificativos del paciente (nombre, ID, fechas, centro… y etiquetas privadas).
+2. **Análisis:** el modelo devuelve la probabilidad de neumonía y el **mapa Grad-CAM**, junto con unos controles
+   básicos de la imagen (resolución, proporción, color, contraste).
+3. **Informe PDF** generado con una plantilla fija: resultado, imágenes, controles de calidad, rendimiento del
+   modelo en test y limitaciones.
+
+> ⚠️ Demostración técnica: **no es un producto sanitario** ni apto para uso clínico. Úsala solo con imágenes públicas o anonimizadas.
+
+```bash
+python app.py   # usa results/weighted_aug/model.pth (o la ruta indicada en MODEL_PATH)
 ```
 
 ## Cómo ejecutarlo

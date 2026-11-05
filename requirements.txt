@@ -6,3 +6,6 @@ numpy
 pandas
 matplotlib
 kaggle
+gradio
+pydicom
+reportlab
