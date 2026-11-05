@@ -9,8 +9,8 @@
 Clasificador binario (**Sano / Neumonía**) de radiografías de tórax de niños de 1 a 5 años. Además de entrenar el modelo,
 el objetivo es **entender cuándo y por qué falla**, revisando sus errores con Grad-CAM.
 
-Es un proyecto de aprendizaje autónomo. Esta es la **versión 2**: al revisar la primera versión encontré varios
-problemas de método y los he corregido (ver [Cambios respecto a la V1](#cambios-respecto-a-la-v1)).
+Es un proyecto de aprendizaje autónomo, con especial cuidado en evaluar el modelo de forma rigurosa
+(ver [Decisiones de diseño](#decisiones-de-diseño)).
 
 ## Datos
 *Chest X-Ray Images (Pneumonia)* (Kermany et al., 2018), publicado en Kaggle.
@@ -29,7 +29,7 @@ Hay casi **3 radiografías con neumonía por cada sana**. Este desequilibrio hac
 3. **Modelo:** ResNet18 preentrenada en ImageNet, con las capas convolucionales congeladas y una última capa nueva de 2 salidas.
 4. **Entrenamiento:** Adam (lr = 0.001), CrossEntropy y *early stopping* sobre la pérdida de validación (paciencia 4).
 5. **Tres experimentos**, cambiando una sola cosa cada vez:
-   * `baseline`: igual que la V1, pero con la validación corregida.
+   * `baseline`: sin pesos por clase ni data augmentation (referencia).
    * `weighted`: añade **pesos por clase** en la función de pérdida para compensar el desequilibrio.
    * `weighted_aug`: añade **data augmentation**: recorte aleatorio, rotación de ±10° y cambios de brillo y contraste,
      sin volteo horizontal, porque cambiaría el lado del corazón.
@@ -40,13 +40,15 @@ Hay casi **3 radiografías con neumonía por cada sana**. Este desequilibrio hac
 ## Resultados
 *Pendiente: se añaden tras el entrenamiento en Colab.*
 
-## Cambios respecto a la V1
-* **Validación:** la V1 hacía *early stopping* con solo 16 imágenes; ahora usa unas 780, separadas por paciente.
-* **Métricas completas:** la V1 solo destacaba la sensibilidad (97 %), pero la especificidad era del 68 %
-  (76 de 234 radiografías sanas marcadas como neumonía). Ese 97 % no venía de una optimización, sino del desequilibrio de clases.
-* **Grad-CAM:** la V1 analizaba un solo falso negativo; ahora se revisan todos.
-* **Código:** del notebook único paso a módulos `.py`. El notebook solo se usa para entrenar en Colab con GPU.
-* **Reproducibilidad:** semilla fija, y la clave de Kaggle se lee de los *secrets* de Colab en lugar de estar en el código.
+## Decisiones de diseño
+* **Validación por paciente:** la carpeta `val` oficial solo tiene 16 imágenes, insuficientes para el *early stopping*.
+  Por eso uso unas 780 imágenes de entrenamiento, separadas por paciente para evitar fuga de datos.
+* **Métricas completas:** con clases desequilibradas, la sensibilidad sola engaña (decir siempre "neumonía" da un 100 %).
+  Por eso reporto también especificidad, precisión, exactitud y F1.
+* **Un cambio por experimento:** así se puede medir el efecto de los pesos por clase y el del data augmentation por separado.
+* **Grad-CAM de todos los falsos negativos**, no de un caso aislado, más una medida numérica de dónde mira el modelo.
+* **Código modular** (`src/`) y un notebook solo para entrenar en Colab con GPU. Semilla fija para reproducibilidad,
+  y la clave de Kaggle se lee de los *secrets* de Colab, nunca del código.
 
 ## Estructura
 ```
