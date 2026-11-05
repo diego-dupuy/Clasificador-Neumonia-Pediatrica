@@ -1,0 +1,118 @@
+"""Evaluate trained models on the test set and compare experiments.
+
+Usage:
+    python -m src.evaluate --experiment weighted_aug
+    python -m src.evaluate --compare
+"""
+
+import argparse
+import json
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import torch  # noqa: E402
+from sklearn.metrics import confusion_matrix  # noqa: E402
+
+from .config import CLASS_NAMES, EXPERIMENTS, RESULTS_DIR  # noqa: E402
+from .dataset import make_loaders  # noqa: E402
+from .model import build_model  # noqa: E402
+
+
+def load_model(name, device):
+    model = build_model(pretrained=False)
+    model.load_state_dict(torch.load(RESULTS_DIR / name / "model.pth", map_location=device))
+    return model.to(device).eval()
+
+
+@torch.no_grad()
+def predict(model, loader, device):
+    labels, preds = [], []
+    for images, y in loader:
+        labels.extend(y.tolist())
+        preds.extend(model(images.to(device)).argmax(1).cpu().tolist())
+    return np.array(labels), np.array(preds)
+
+
+def clinical_metrics(labels, preds):
+    """Metrics from the confusion matrix (positive class = Pneumonia)."""
+    tn, fp, fn, tp = confusion_matrix(labels, preds, labels=[0, 1]).ravel()
+    sensitivity = tp / (tp + fn)  # sick children detected
+    specificity = tn / (tn + fp)  # healthy children correctly cleared
+    precision = tp / (tp + fp)  # of the "pneumonia" alarms, how many are real
+    return {
+        "sensitivity": sensitivity, "specificity": specificity, "precision": precision,
+        "accuracy": (tp + tn) / (tp + tn + fp + fn),
+        "f1": 2 * precision * sensitivity / (precision + sensitivity),
+        "TP": int(tp), "TN": int(tn), "FP": int(fp), "FN": int(fn),
+    }
+
+
+def plot_confusion(labels, preds, title, path):
+    cm = confusion_matrix(labels, preds, labels=[0, 1])
+    fig, ax = plt.subplots(figsize=(4.5, 4))
+    ax.imshow(cm, cmap="Blues")
+    for i in range(2):
+        for j in range(2):
+            ax.text(j, i, cm[i, j], ha="center", va="center", fontsize=14,
+                    color="white" if cm[i, j] > cm.max() / 2 else "black")
+    ax.set_xticks([0, 1], CLASS_NAMES)
+    ax.set_yticks([0, 1], CLASS_NAMES)
+    ax.set_xlabel("Prediction")
+    ax.set_ylabel("Real label")
+    ax.set_title(title)
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_history(name, path):
+    history = json.loads((RESULTS_DIR / name / "history.json").read_text())
+    epochs = [h["epoch"] for h in history]
+    fig, ax = plt.subplots(figsize=(5, 3.5))
+    ax.plot(epochs, [h["train_loss"] for h in history], label="train")
+    ax.plot(epochs, [h["val_loss"] for h in history], label="validation")
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("loss")
+    ax.set_title(f"Training curves ({name})")
+    ax.legend()
+    fig.savefig(path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+
+
+def evaluate(name, device):
+    loaders, _ = make_loaders(EXPERIMENTS[name])
+    labels, preds = predict(load_model(name, device), loaders["test"], device)
+    metrics = clinical_metrics(labels, preds)
+    out = RESULTS_DIR / name
+    (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    plot_confusion(labels, preds, f"Test set ({name})", out / "confusion_matrix.png")
+    plot_history(name, out / "training_curves.png")
+    print(json.dumps(metrics, indent=2))
+    return metrics
+
+
+def compare():
+    rows = {}
+    for name in EXPERIMENTS:
+        path = RESULTS_DIR / name / "metrics.json"
+        if path.exists():
+            rows[name] = json.loads(path.read_text())
+    table = pd.DataFrame(rows).T
+    table.to_csv(RESULTS_DIR / "comparison.csv")
+    print(table.round(3).to_string())
+    return table
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--experiment", choices=EXPERIMENTS)
+    parser.add_argument("--compare", action="store_true")
+    args = parser.parse_args()
+    if args.compare:
+        compare()
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        evaluate(args.experiment, device)

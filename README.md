@@ -1,61 +1,82 @@
 <div align="center">
 
-# 🫁 Clasificación de Neumonía Pediátrica mediante Deep Learning
-**Clasificación automática de radiografías mediante Deep Learning (ResNet18) y XAI.**
+# Clasificación de neumonía pediátrica en radiografías de tórax
+
+**ResNet18 (transfer learning) · PyTorch · Grad-CAM**
 
 </div>
 
----
+Clasificador binario (**Sano / Neumonía**) de radiografías de tórax de niños de 1 a 5 años. Además de entrenar el modelo,
+el objetivo es **entender cuándo y por qué falla**, revisando sus errores con Grad-CAM.
 
-## 📌 Resumen del Proyecto
-Este proyecto consiste en el entrenamiento de un modelo de red neuronal convolucional para la clasificación binaria de radiografías de tórax, distinguiendo entre pulmones sanos y pulmones con neumonía en pacientes pediátricos. 
+Es un proyecto de aprendizaje autónomo. Esta es la **versión 2**: al revisar la primera versión encontré varios
+problemas de método y los he corregido (ver [Cambios respecto a la V1](#cambios-respecto-a-la-v1)).
 
-Como parte de mi formación autónoma en inteligencia artificial aplicada a la ingeniería biomédica, el objetivo ha sido entender el flujo de trabajo completo: desde el preprocesamiento de los datos hasta la interpretación de las decisiones del modelo mediante mapas de activación (Grad-CAM).
+## Datos
+*Chest X-Ray Images (Pneumonia)* (Kermany et al., 2018), publicado en Kaggle.
 
-Para garantizar la transparencia algorítmica, el modelo no opera como una "caja negra", sino que integra **Grad-CAM** (Gradient-weighted Class Activation Mapping) para generar mapas de calor que justifican visualmente cada diagnóstico clínico.
+| Conjunto | Sanas | Neumonía |
+|---|---|---|
+| Entrenamiento | 1 341 | 3 875 |
+| Test | 234 | 390 |
 
-## 🛠️ Stack Tecnológico
-* **Lenguaje:** Python 3
-* **Deep Learning Framework:** PyTorch & Torchvision
-* **Arquitectura:** ResNet18 (Transfer Learning)
-* **XAI & Visión por Computador:** Grad-CAM, OpenCV, Scikit-Learn
-* **Análisis de Datos:** NumPy, Matplotlib, Seaborn
+Hay casi **3 radiografías con neumonía por cada sana**. Este desequilibrio hace que el modelo tienda a decir "neumonía".
 
-## 🔬 Metodología de Desarrollo
+## Método
+1. **Preprocesado:** redimensionado a 224 × 224 y normalización con la media y desviación de ImageNet.
+2. **Validación por paciente:** la carpeta `val` oficial solo tiene 16 imágenes, así que separo un 15 % de
+   entrenamiento como validación, **agrupando por paciente** para que un mismo niño no aparezca en los dos conjuntos.
+3. **Modelo:** ResNet18 preentrenada en ImageNet, con las capas convolucionales congeladas y una última capa nueva de 2 salidas.
+4. **Entrenamiento:** Adam (lr = 0.001), CrossEntropy y *early stopping* sobre la pérdida de validación (paciencia 4).
+5. **Tres experimentos**, cambiando una sola cosa cada vez:
+   * `baseline`: igual que la V1, pero con la validación corregida.
+   * `weighted`: añade **pesos por clase** en la función de pérdida para compensar el desequilibrio.
+   * `weighted_aug`: añade **data augmentation**: recorte aleatorio, rotación de ±10° y cambios de brillo y contraste,
+     sin volteo horizontal, porque cambiaría el lado del corazón.
+6. **Evaluación** en las 624 radiografías de test: sensibilidad, especificidad, precisión, exactitud y F1.
+7. **Grad-CAM** de **todos** los falsos negativos, más una medida sencilla de cuánta atención cae en la zona central
+   de la imagen frente a los bordes.
 
-### 1. Pre-procesamiento de Imágenes
-Se implementó un pipeline de transformación matemática para estandarizar la entrada a la red neuronal:
-* Redimensionado a **224x224 píxeles**.
-* Conversión a Tensores de PyTorch.
-* **Normalización** basada en los estándares de ImageNet (Media: `[0.485, 0.456, 0.406]`, Desviación Estándar: `[0.229, 0.224, 0.225]`).
+## Resultados
+*Pendiente: se añaden tras el entrenamiento en Colab.*
 
-### 2. Arquitectura y Entrenamiento (Transfer Learning)
-Se optó por **ResNet18** pre-entrenada para aprovechar su capacidad de extracción de características semánticas (bordes, texturas pulmonares).
-* Se congelaron las capas base (`requires_grad = False`).
-* Se modificó la capa de salida para una clasificación binaria: **Sano (0) vs. Neumonía (1)**.
-* Se utilizó la función de pérdida `CrossEntropyLoss` y el optimizador `Adam`.
-* Se implementó **Early Stopping** (paciencia = 4 épocas) monitorizando la pérdida de validación para evitar el *overfitting*.
+## Cambios respecto a la V1
+* **Validación:** la V1 hacía *early stopping* con solo 16 imágenes; ahora usa unas 780, separadas por paciente.
+* **Métricas completas:** la V1 solo destacaba la sensibilidad (97 %), pero la especificidad era del 68 %
+  (76 de 234 radiografías sanas marcadas como neumonía). Ese 97 % no venía de una optimización, sino del desequilibrio de clases.
+* **Grad-CAM:** la V1 analizaba un solo falso negativo; ahora se revisan todos.
+* **Código:** del notebook único paso a módulos `.py`. El notebook solo se usa para entrenar en Colab con GPU.
+* **Reproducibilidad:** semilla fija, y la clave de Kaggle se lee de los *secrets* de Colab en lugar de estar en el código.
 
-### 3. Resultados y Auditoría Clínica
-El modelo fue evaluado en un *Test Set* ciego de 624 pacientes, obteniendo métricas de grado médico enfocadas en la seguridad del paciente:
-* **Sensibilidad (Recall): 97%** (Métrica clave en triaje para evitar Falsos Negativos).
-* **Precisión (Precision): 83%** (Sesgo conservador priorizando la seguridad).
-* **Falsos Negativos Críticos:** 12 sobre 390 casos positivos reales.
+## Estructura
+```
+src/
+├── config.py      # rutas, hiperparámetros y definición de los experimentos
+├── dataset.py     # transformaciones, data augmentation, separación por paciente, DataLoaders
+├── model.py       # ResNet18 con transfer learning
+├── train.py       # bucle de entrenamiento con early stopping
+├── evaluate.py    # métricas en test, matriz de confusión, comparación de experimentos
+└── gradcam.py     # Grad-CAM de los falsos negativos y medida de atención central
+notebooks/
+└── train_colab.ipynb   # ejecuta todo en Google Colab (GPU)
+```
 
-### 4. Inteligencia Artificial Explicable (XAI)
-Para auditar los 12 Falsos Negativos, se implementó el algoritmo Grad-CAM. El análisis visual reveló un sesgo algorítmico: el modelo ignoraba ocasionalmente la opacidad pulmonar difusa y anclaba su decisión en artefactos localizados en los ángulos costofrénicos, diagnosticando "la esquina" en lugar del pulmón. 
+## Cómo ejecutarlo
+Abre [`notebooks/train_colab.ipynb`](notebooks/train_colab.ipynb) en Colab, elige GPU T4, añade tu clave de Kaggle
+como *secret* (`KAGGLE_API_TOKEN`) y ejecuta todas las celdas. En local:
 
----
+```bash
+pip install -r requirements.txt
+python -m src.train --experiment weighted_aug
+python -m src.evaluate --experiment weighted_aug
+python -m src.gradcam --experiment weighted_aug
+```
 
-## 🚀 Próximos Pasos (V2)
-* Implementación de *Data Augmentation* avanzado (Random Crops centrados) para mitigar el sesgo espacial detectado por Grad-CAM.
-* Desarrollo de un pipeline de inferencia ("1-click script") para simular un entorno de producción hospitalario.
+## Bibliografía
+He, K., Zhang, X., Ren, S., & Sun, J. (2016). Deep residual learning for image recognition. En *Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition* (pp. 770–778). https://doi.org/10.1109/CVPR.2016.90
 
-<br>
-> **📚 Bibliografía Principal:**
+Kermany, D. S., Goldbaum, M., Cai, W., Valentim, C. C. S., Liang, H., Baxter, S. L., McKeown, A., Yang, G., Wu, X., Yan, F., Dong, J., Prasadha, M. K., Pei, J., Ting, M. Y. L., Zhu, J., Li, C., Hewett, S., Dong, J., Ziyar, I., … Zhang, K. (2018). Identifying medical diagnoses and treatable diseases by image-based deep learning. *Cell, 172*(5), 1122–1131.e9. https://doi.org/10.1016/j.cell.2018.02.010
 
-* He, K., Zhang, X., Ren, S., & Sun, J. (2016). Deep residual learning for image recognition. En *Proceedings of the IEEE conference on computer vision and pattern recognition* (pp. 770-778). https://doi.org/10.1109/CVPR.2016.90
-  
-* Mooney, P. (2018). *Chest X-Ray Images (Pneumonia)*. Kaggle. https://www.kaggle.com/paultimothymooney/chest-xray-pneumonia
-  
-* Selvaraju, R. R., Cogswell, M., Das, A., Vedantam, R., Parikh, D., & Batra, D. (2017). Grad-cam: Visual explanations from deep networks via gradient-based localization. En *Proceedings of the IEEE international conference on computer vision* (pp. 618-626). https://doi.org/10.1109/ICCV.2017.74
+Mooney, P. (2018). *Chest X-Ray Images (Pneumonia)* [Conjunto de datos]. Kaggle. https://www.kaggle.com/datasets/paultimothymooney/chest-xray-pneumonia
+
+Selvaraju, R. R., Cogswell, M., Das, A., Vedantam, R., Parikh, D., & Batra, D. (2017). Grad-CAM: Visual explanations from deep networks via gradient-based localization. En *Proceedings of the IEEE International Conference on Computer Vision* (pp. 618–626). https://doi.org/10.1109/ICCV.2017.74
